@@ -189,7 +189,7 @@ func main() {
 	}
 
 	noCloudNetworkConfig := &NoCloudNetworkConfig{
-		Version: 2,
+		Version: 1,
 		Config:  make([]NoCloudNetworkInterface, 0),
 	}
 
