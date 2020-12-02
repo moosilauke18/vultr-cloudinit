@@ -99,8 +99,8 @@ func main() {
 		logrus.Fatalf("Error checking output directory: %s", err.Error())
 	}
 
-	logrus.Info("Starting DHCP Client on eth0")
-	dhclient := exec.Command("/usr/sbin/dhclient", "-1", "-v", "-d", "eth0")
+	logrus.Info("Starting DHCP Client on ens3")
+	dhclient := exec.Command("/usr/sbin/dhclient", "-1", "-v", "-d", "ens3")
 	go func() {
 		err := dhclient.Run()
 		if err != nil {
@@ -115,19 +115,19 @@ func main() {
 		}
 	}()
 
-	logrus.Info("Waiting for eth0 to get an IP address")
-	iface, err := net.InterfaceByName("eth0")
+	logrus.Info("Waiting for ens3 to get an IP address")
+	iface, err := net.InterfaceByName("ens3")
 
 	if err != nil {
-		logrus.Fatalf("Error getting eth0: %s", err.Error())
+		logrus.Fatalf("Error getting ens3: %s", err.Error())
 	}
 
-	var eth0IP *net.IP
+	var ens3IP *net.IP
 
-	for eth0IP == nil {
+	for ens3IP == nil {
 		addrs, err := iface.Addrs()
 		if err != nil {
-			logrus.Fatalf("Error getting eth0 addresses: %s", err.Error())
+			logrus.Fatalf("Error getting ens3 addresses: %s", err.Error())
 		}
 		for _, addr := range addrs {
 			var ip *net.IP
@@ -148,13 +148,13 @@ func main() {
 			}
 
 			logrus.Infof("Found IP: %s", ip.String())
-			eth0IP = ip
+			ens3IP = ip
 			if dhclient.Process != nil {
 				dhclient.Process.Kill()
 			}
 			break
 		}
-		if eth0IP == nil {
+		if ens3IP == nil {
 			logrus.Info("No IP address found, sleeping for 5 seconds before trying again")
 			time.Sleep(5 * time.Second)
 		}
@@ -200,7 +200,7 @@ func main() {
 
 		noCloudNetworkConfig.Config = append(noCloudNetworkConfig.Config, NoCloudNetworkInterface{
 			Type:       "physical",
-			Name:       fmt.Sprintf("eth%d", i),
+			Name:       fmt.Sprintf("ens%d", i),
 			MacAddress: vInterface.Mac,
 			Subnets: []NoCloudNetworkSubnet{
 				{
@@ -218,7 +218,7 @@ func main() {
 		logrus.Fatal(err.Error())
 	}
 
-	userdata, err := []byte{}, nil
+	userdata, err := getUserData()
 	if err != nil {
 		logrus.Fatal(err.Error())
 	}
@@ -228,6 +228,25 @@ func main() {
 		logrus.Fatal(err.Error())
 	}
 
+}
+func getUserData() ([]byte, error) {
+	ctx, cancel := timeoutContext()
+	defer cancel()
+
+	response, err := ctxhttp.Get(ctx, http.DefaultClient, "http://169.254.169.254/openstack/user-data")
+	if err != nil {
+		return nil, fmt.Errorf("error getting metadata: %s", err.Error())
+	}
+
+	responseData, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %s", err.Error())
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("invalid response from userdata service: %s", string(responseData))
+	}
+	return responseData, nil
 }
 
 func getMetadata() (*VultrMetadata, error) {
